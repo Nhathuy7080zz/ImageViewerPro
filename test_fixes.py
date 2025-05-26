@@ -44,22 +44,38 @@ def test_imports():
         return False
 
 def test_thumbnail_creation():
-    """Test thumbnail creation with PIL.ImageQt"""
+    """Test thumbnail creation with our fixed method"""
     print("\n🖼️ Testing thumbnail creation...")
     
     try:
-        from PIL import Image, ImageQt
+        from PIL import Image
+        from PyQt5.QtWidgets import QApplication
         from PyQt5.QtGui import QPixmap, QIcon
+        import io
+        import sys
+        
+        # Create QApplication if not exists
+        app = QApplication.instance()
+        if app is None:
+            app = QApplication(sys.argv)
         
         # Create a simple test image
         test_image = Image.new('RGB', (100, 100), color='red')
         
-        # Test the fixed ImageQt usage
-        qt_image = ImageQt(test_image)  # This should work now
-        pixmap = QPixmap.fromImage(qt_image)
+        # Test our fixed thumbnail creation method
+        byte_array = io.BytesIO()
+        test_image.save(byte_array, format='PNG')
+        byte_array.seek(0)
         
-        print("✅ Thumbnail creation - OK")
-        return True
+        pixmap = QPixmap()
+        pixmap.loadFromData(byte_array.getvalue())
+        
+        if not pixmap.isNull():
+            print("✅ Thumbnail creation - OK")
+            return True
+        else:
+            print("❌ Thumbnail creation failed - pixmap is null")
+            return False
         
     except Exception as e:
         print(f"❌ Thumbnail creation error: {e}")

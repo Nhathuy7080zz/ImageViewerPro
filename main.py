@@ -278,8 +278,7 @@ class ThumbnailWidget(QListWidget):
         """Load all images from a directory"""
         self.clear()
         self.image_paths.clear()
-        
-        # Supported image formats
+          # Supported image formats
         supported_formats = {'.jpg', '.jpeg', '.png', '.bmp', '.gif', '.tiff', '.tif', '.webp', '.ico', '.svg'}
         
         try:
@@ -292,7 +291,8 @@ class ThumbnailWidget(QListWidget):
             
     def add_thumbnail(self, image_path: str):
         """Add a thumbnail for an image"""
-        try:            # Create thumbnail
+        try:
+            # Create thumbnail
             image = Image.open(image_path)
             image.thumbnail((120, 120), Image.Resampling.LANCZOS)
             
