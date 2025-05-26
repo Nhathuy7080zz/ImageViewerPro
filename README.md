@@ -242,6 +242,21 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 - 📊 Batch processing capabilities
 - 🌐 Cloud storage integration
 
+## 🔧 Recent Updates & Bug Fixes
+
+### ✅ Version 2.0.1 - Critical Bug Fixes (Latest)
+- **Fixed Thumbnail Creation**: Resolved `'module' object is not callable` error by replacing problematic PIL.ImageQt with robust PIL → bytes → QPixmap conversion
+- **Fixed Build Script**: Corrected indentation errors and file references in PyInstaller build scripts
+- **Added Missing Imports**: Added `datetime` and `io` modules for proper functionality
+- **Improved Error Handling**: Enhanced thumbnail creation with better error reporting
+- **Performance Optimization**: More reliable thumbnail loading for large image directories
+
+### 🛠️ Technical Improvements
+- **Replaced PIL.ImageQt**: Due to compatibility issues, switched to PIL → BytesIO → QPixmap workflow
+- **Build System Fixed**: All build scripts now properly reference `main.py` instead of missing files
+- **Import Cleanup**: Resolved all missing module imports and dependencies
+- **Code Stability**: Eliminated module callable errors and improved error handling
+
 ---
 
 **⭐ Star this project if you find it useful!**

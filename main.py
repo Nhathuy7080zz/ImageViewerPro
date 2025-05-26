@@ -10,6 +10,7 @@ import sys
 import os
 import subprocess
 import json
+import datetime
 from pathlib import Path
 from typing import List, Optional, Tuple, Dict, Any
 
@@ -291,14 +292,18 @@ class ThumbnailWidget(QListWidget):
             
     def add_thumbnail(self, image_path: str):
         """Add a thumbnail for an image"""
-        try:
-            # Create thumbnail
+        try:            # Create thumbnail
             image = Image.open(image_path)
             image.thumbnail((120, 120), Image.Resampling.LANCZOS)
             
-            # Convert to QPixmap
-            qt_image = ImageQt.ImageQt(image)
-            pixmap = QPixmap.fromImage(qt_image)
+            # Convert PIL image to bytes and then to QPixmap
+            import io
+            byte_array = io.BytesIO()
+            image.save(byte_array, format='PNG')
+            byte_array.seek(0)
+            
+            pixmap = QPixmap()
+            pixmap.loadFromData(byte_array.getvalue())
             
             # Create list item
             item = QListWidgetItem()
