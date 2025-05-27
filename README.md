@@ -110,15 +110,16 @@ pip install PyQt5>=5.15.0 Pillow>=9.0.0 matplotlib>=3.5.0
 # Install PyInstaller
 pip install pyinstaller
 
-# Run the build script
-python build.py
+# Run the optimized build script
+python build_optimized_exe.py
 ```
 
 The executable will be created in the `dist/` directory with all dependencies included.
 
-### Build Options
-- **One-file executable**: Single `.exe` file
-- **Directory distribution**: Folder with executable and libraries
+### Build Features
+- **Optimized one-file executable**: Single `.exe` file with all dependencies
+- **Professional launcher**: Easy-to-use `.bat` file for users
+- **Complete distribution package**: Ready-to-share folder with documentation
 - **Custom icon**: Professional application icon
 - **Optimized size**: Compressed and optimized build
 
@@ -126,13 +127,17 @@ The executable will be created in the `dist/` directory with all dependencies in
 
 ```
 ImageViewerPro/
-├── main.py              # Main application file
-├── requirements.txt     # Python dependencies
-├── build.py            # Build script for executable
-├── README.md           # Documentation
-├── dist/               # Built executables (created during build)
-└── build/              # Build cache (created during build)
+├── 🐍 main.py                     # Main application file  
+├── 📋 requirements.txt            # Python dependencies
+├── 🚀 build_optimized_exe.py      # Optimized build script for executable
+├── 📄 README.md                   # Documentation
+├── ⚖️ LICENSE                     # MIT License
+├── 🚫 .gitignore                  # Git ignore rules
+├── 📁 dist/                       # Built executables (created during build)
+└── 📁 build/                      # Build cache (created during build)
 ```
+
+*Clean, minimal structure with only essential files*
 
 ## 🎯 Technical Details
 
