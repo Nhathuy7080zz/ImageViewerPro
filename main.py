@@ -331,8 +331,10 @@ class MetadataWidget(QTextEdit):
     def __init__(self):
         super().__init__()
         self.setReadOnly(True)
-        self.setMaximumWidth(300)
-        self.setFont(QFont("Consolas", 9))
+        self.setMaximumWidth(320)  # Slightly wider for better table display
+        self.setFont(QFont("Segoe UI", 9))  # Better font for tables
+        # Enable HTML rendering
+        self.setHtml("<p>Select an image to view metadata...</p>")
         
     def display_metadata(self, image_path: str):
         """Display metadata for the given image"""
@@ -341,28 +343,39 @@ class MetadataWidget(QTextEdit):
             file_path = Path(image_path)
             file_stat = file_path.stat()
             
-            metadata_text = f"""📁 <b>File Information</b>
-📄 <b>Name:</b> {file_path.name}
-📂 <b>Directory:</b> {file_path.parent}
-📏 <b>Size:</b> {self.format_file_size(file_stat.st_size)}
-📅 <b>Modified:</b> {self.format_timestamp(file_stat.st_mtime)}
+            metadata_text = f"""
+<div style="font-family: 'Segoe UI', Arial, sans-serif; line-height: 1.6;">
+
+<table style="width: 100%; border-collapse: collapse; margin-bottom: 15px;">
+<tr style="background-color: #f0f0f0;"><td colspan="2" style="padding: 8px; border: 1px solid #ddd; font-weight: bold; font-size: 14px;">📁 File Information</td></tr>
+<tr><td style="padding: 5px; border: 1px solid #ddd; font-weight: bold; width: 30%;">📄 Name:</td><td style="padding: 5px; border: 1px solid #ddd;">{file_path.name}</td></tr>
+<tr><td style="padding: 5px; border: 1px solid #ddd; font-weight: bold;">📂 Directory:</td><td style="padding: 5px; border: 1px solid #ddd; word-break: break-all;">{file_path.parent}</td></tr>
+<tr><td style="padding: 5px; border: 1px solid #ddd; font-weight: bold;">📏 Size:</td><td style="padding: 5px; border: 1px solid #ddd;">{self.format_file_size(file_stat.st_size)}</td></tr>
+<tr><td style="padding: 5px; border: 1px solid #ddd; font-weight: bold;">📅 Modified:</td><td style="padding: 5px; border: 1px solid #ddd;">{self.format_timestamp(file_stat.st_mtime)}</td></tr>
+</table>
 
 """
             
             # Image information
             try:
                 with Image.open(image_path) as img:
-                    metadata_text += f"""🖼️ <b>Image Properties</b>
-📐 <b>Dimensions:</b> {img.size[0]} × {img.size[1]} pixels
-🎨 <b>Mode:</b> {img.mode}
-📋 <b>Format:</b> {img.format}
+                    metadata_text += f"""
+<table style="width: 100%; border-collapse: collapse; margin-bottom: 15px;">
+<tr style="background-color: #f0f0f0;"><td colspan="2" style="padding: 8px; border: 1px solid #ddd; font-weight: bold; font-size: 14px;">🖼️ Image Properties</td></tr>
+<tr><td style="padding: 5px; border: 1px solid #ddd; font-weight: bold; width: 30%;">📐 Dimensions:</td><td style="padding: 5px; border: 1px solid #ddd;">{img.size[0]} × {img.size[1]} pixels</td></tr>
+<tr><td style="padding: 5px; border: 1px solid #ddd; font-weight: bold;">🎨 Mode:</td><td style="padding: 5px; border: 1px solid #ddd;">{img.mode}</td></tr>
+<tr><td style="padding: 5px; border: 1px solid #ddd; font-weight: bold;">📋 Format:</td><td style="padding: 5px; border: 1px solid #ddd;">{img.format}</td></tr>
+</table>
 
 """
                     
                     # EXIF data
                     exif_data = img._getexif()
                     if exif_data:
-                        metadata_text += "📸 <b>EXIF Data</b>\n"
+                        metadata_text += """
+<table style="width: 100%; border-collapse: collapse; margin-bottom: 15px;">
+<tr style="background-color: #f0f0f0;"><td colspan="2" style="padding: 8px; border: 1px solid #ddd; font-weight: bold; font-size: 14px;">📸 EXIF Data</td></tr>
+"""
                         
                         # Key EXIF tags we want to display
                         important_tags = {
@@ -383,20 +396,48 @@ class MetadataWidget(QTextEdit):
                             'ColorSpace': '🌈 Color Space'
                         }
                         
+                        exif_count = 0
                         for tag_id, value in exif_data.items():
                             tag = TAGS.get(tag_id, tag_id)
                             if tag in important_tags:
                                 emoji_tag = important_tags[tag]
-                                metadata_text += f"<b>{emoji_tag}:</b> {value}\n"
+                                # Format values nicely
+                                if isinstance(value, tuple) and len(value) == 2:
+                                    formatted_value = f"{value[0]}/{value[1]}"
+                                else:
+                                    formatted_value = str(value)
+                                metadata_text += f'<tr><td style="padding: 5px; border: 1px solid #ddd; font-weight: bold; width: 30%;">{emoji_tag}:</td><td style="padding: 5px; border: 1px solid #ddd;">{formatted_value}</td></tr>\n'
+                                exif_count += 1
+                        
+                        if exif_count == 0:
+                            metadata_text += '<tr><td colspan="2" style="padding: 8px; border: 1px solid #ddd; font-style: italic; text-align: center;">📸 No EXIF data available</td></tr>'
+                        
+                        metadata_text += "</table>"
                     else:
-                        metadata_text += "📸 <i>No EXIF data available</i>\n"
+                        metadata_text += """
+<table style="width: 100%; border-collapse: collapse; margin-bottom: 15px;">
+<tr style="background-color: #f0f0f0;"><td colspan="2" style="padding: 8px; border: 1px solid #ddd; font-weight: bold; font-size: 14px;">📸 EXIF Data</td></tr>
+<tr><td colspan="2" style="padding: 8px; border: 1px solid #ddd; font-style: italic; text-align: center;">📸 No EXIF data available</td></tr>
+</table>
+"""
                         
             except Exception as e:
-                metadata_text += f"❌ <b>Error reading image:</b> {str(e)}\n"
+                metadata_text += f"""
+<table style="width: 100%; border-collapse: collapse; margin-bottom: 15px;">
+<tr style="background-color: #ffebee;"><td style="padding: 8px; border: 1px solid #ddd; color: #c62828;">❌ <b>Error reading image:</b> {str(e)}</td></tr>
+</table>
+"""
                 
         except Exception as e:
-            metadata_text = f"❌ <b>Error reading file:</b> {str(e)}"
+            metadata_text = f"""
+<div style="font-family: 'Segoe UI', Arial, sans-serif;">
+<table style="width: 100%; border-collapse: collapse;">
+<tr style="background-color: #ffebee;"><td style="padding: 8px; border: 1px solid #ddd; color: #c62828;">❌ <b>Error reading file:</b> {str(e)}</td></tr>
+</table>
+</div>
+"""
             
+        metadata_text += "</div>"
         self.setHtml(metadata_text)
         
     def format_file_size(self, size_bytes: int) -> str:
@@ -460,8 +501,7 @@ class ImageViewer(QMainWindow):
         self.scroll_area.setWidget(self.image_label)
         self.scroll_area.setWidgetResizable(True)
         center_layout.addWidget(self.scroll_area)
-        
-        # Image controls
+          # Image controls
         controls_layout = QHBoxLayout()
         
         self.zoom_in_btn = QPushButton("🔍+ Zoom In")
@@ -473,7 +513,8 @@ class ImageViewer(QMainWindow):
         self.zoom_fit_btn = QPushButton("📏 Fit")
         self.zoom_fit_btn.clicked.connect(self.image_label.zoom_fit)
         
-        self.zoom_actual_btn = QPushButton("1️⃣ Actual")
+        self.zoom_actual_btn = QPushButton("1:1")
+        self.zoom_actual_btn.setToolTip("Actual Size (100%)")
         self.zoom_actual_btn.clicked.connect(self.image_label.zoom_actual)
         
         self.rotate_left_btn = QPushButton("↺ Rotate Left")
@@ -723,8 +764,7 @@ class ImageViewer(QMainWindow):
                 
     def load_image(self, image_path: str):
         """Load and display an image"""
-        try:
-            # Load and display image
+        try:            # Load and display image
             pixmap = QPixmap(image_path)
             if pixmap.isNull():
                 self.status_bar.showMessage(f"❌ Failed to load image: {image_path}")
@@ -732,6 +772,9 @@ class ImageViewer(QMainWindow):
                 
             self.image_label.set_image(pixmap)
             self.current_image_path = image_path
+            
+            # Set default view to fit
+            self.image_label.zoom_fit()
             
             # Update metadata
             self.metadata_widget.display_metadata(image_path)
