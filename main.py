@@ -162,9 +162,12 @@ class ImageLabel(QLabel):
         self.pan_offset = QPoint(0, 0)
         self.dragging = False
         self.last_pan_point = QPoint()
-        
-        # Enable mouse tracking
+          # Enable mouse tracking and panning
         self.setMouseTracking(True)
+        self.setScaledContents(False)
+        
+        # Keep reference to scroll area for panning
+        self.scroll_area = None
         
     def set_image(self, pixmap: QPixmap):
         """Set the image to display"""
@@ -173,6 +176,10 @@ class ImageLabel(QLabel):
         self.rotation_angle = 0
         self.pan_offset = QPoint(0, 0)
         self.update_display()
+        
+    def set_scroll_area(self, scroll_area):
+        """Set reference to scroll area for advanced panning"""
+        self.scroll_area = scroll_area
         
     def update_display(self):
         """Update the displayed image with current transformations"""
@@ -187,7 +194,8 @@ class ImageLabel(QLabel):
         # Apply scaling
         scaled_size = rotated_pixmap.size() * self.scale_factor
         scaled_pixmap = rotated_pixmap.scaled(scaled_size, Qt.KeepAspectRatio, Qt.SmoothTransformation)
-        
+          # Update widget size to match scaled image for proper scrolling
+        self.resize(scaled_pixmap.size())
         self.setPixmap(scaled_pixmap)
         
     def zoom_in(self):
@@ -232,11 +240,39 @@ class ImageLabel(QLabel):
         self.update_display()
         
     def wheelEvent(self, event):
-        """Handle mouse wheel for zooming"""
+        """Handle mouse wheel for zooming at cursor position"""
+        if not self.original_pixmap:
+            return
+            
+        # Get the position of the mouse cursor
+        cursor_pos = event.pos()
+        
+        # Store old scale factor
+        old_scale = self.scale_factor
+        
+        # Zoom in/out
         if event.angleDelta().y() > 0:
-            self.zoom_in()
+            self.scale_factor *= 1.25
         else:
-            self.zoom_out()
+            self.scale_factor *= 0.8
+            
+        # Limit zoom levels
+        self.scale_factor = max(0.1, min(20.0, self.scale_factor))
+        
+        # Update display
+        self.update_display()
+        
+        # Adjust scroll position to zoom at cursor
+        if self.scroll_area and old_scale != self.scale_factor:
+            scale_ratio = self.scale_factor / old_scale
+            h_bar = self.scroll_area.horizontalScrollBar()
+            v_bar = self.scroll_area.verticalScrollBar()
+              # Calculate new scroll positions to keep cursor position stable
+            new_h = int((h_bar.value() + cursor_pos.x()) * scale_ratio - cursor_pos.x())
+            new_v = int((v_bar.value() + cursor_pos.y()) * scale_ratio - cursor_pos.y())
+            
+            h_bar.setValue(new_h)
+            v_bar.setValue(new_v)
             
     def mousePressEvent(self, event):
         """Handle mouse press for panning"""
@@ -244,14 +280,21 @@ class ImageLabel(QLabel):
             self.dragging = True
             self.last_pan_point = event.pos()
             self.setCursor(QCursor(Qt.ClosedHandCursor))
-            
+    
     def mouseMoveEvent(self, event):
         """Handle mouse move for panning"""
-        if self.dragging:
+        if self.dragging and self.scroll_area:
             delta = event.pos() - self.last_pan_point
-            self.pan_offset += delta
+            
+            # Move scroll bars based on mouse movement
+            h_bar = self.scroll_area.horizontalScrollBar()
+            v_bar = self.scroll_area.verticalScrollBar()
+            
+            # Invert delta for natural panning behavior
+            h_bar.setValue(h_bar.value() - delta.x())
+            v_bar.setValue(v_bar.value() - delta.y())
+            
             self.last_pan_point = event.pos()
-            # Note: Pan functionality would need additional implementation
             
     def mouseReleaseEvent(self, event):
         """Handle mouse release"""
@@ -494,12 +537,15 @@ class ImageViewer(QMainWindow):
         # Center panel - Main image display
         center_widget = QWidget()
         center_layout = QVBoxLayout(center_widget)
-        
-        # Image display area
+          # Image display area
         self.scroll_area = QScrollArea()
         self.image_label = ImageLabel()
         self.scroll_area.setWidget(self.image_label)
         self.scroll_area.setWidgetResizable(True)
+        
+        # Connect scroll area to image label for panning
+        self.image_label.set_scroll_area(self.scroll_area)
+        
         center_layout.addWidget(self.scroll_area)
           # Image controls
         controls_layout = QHBoxLayout()
@@ -554,8 +600,21 @@ class ImageViewer(QMainWindow):
         
         self.splitter.addWidget(right_widget)
         
-        # Set splitter proportions
-        self.splitter.setSizes([250, 800, 350])
+        # Configure splitter for better resizing
+        self.splitter.setCollapsible(0, True)  # Allow left panel to collapse
+        self.splitter.setCollapsible(1, False) # Don't allow center panel to collapse
+        self.splitter.setCollapsible(2, True)  # Allow right panel to collapse
+        
+        # Set splitter proportions (more flexible sizing)
+        self.splitter.setSizes([280, 700, 380])
+        
+        # Set minimum sizes for panels
+        self.thumbnail_widget.setMinimumWidth(200)
+        center_widget.setMinimumWidth(400)
+        right_widget.setMinimumWidth(250)
+        
+        # Make splitter handles more visible
+        self.splitter.setHandleWidth(5)
         
         # Status bar
         self.status_bar = QStatusBar()
@@ -631,15 +690,14 @@ class ImageViewer(QMainWindow):
         QShortcut(QKeySequence("Ctrl+-"), self, self.image_label.zoom_out)
         QShortcut(QKeySequence("Ctrl+0"), self, self.image_label.zoom_actual)
         QShortcut(QKeySequence("Ctrl+9"), self, self.image_label.zoom_fit)
-        
-        # Rotation shortcuts
+          # Rotation shortcuts
         QShortcut(QKeySequence("Ctrl+L"), self, self.image_label.rotate_left)
         QShortcut(QKeySequence("Ctrl+R"), self, self.image_label.rotate_right)
         
     def apply_theme(self):
         """Apply current theme to the application"""
         if self.dark_theme:
-            # Dark theme
+            # Dark theme with comprehensive styling
             self.setStyleSheet("""
                 QMainWindow {
                     background-color: #2b2b2b;
@@ -682,23 +740,61 @@ class ImageViewer(QMainWindow):
                     background-color: #353535;
                     color: #ffffff;
                     border: 1px solid #555555;
+                    selection-background-color: #555555;
+                }
+                QListWidget::item:selected {
+                    background-color: #555555;
+                    color: #ffffff;
                 }
                 QTextEdit {
                     background-color: #353535;
                     color: #ffffff;
                     border: 1px solid #555555;
                 }
+                QScrollArea {
+                    background-color: #2b2b2b;
+                    border: 1px solid #555555;
+                }
+                QScrollBar:vertical {
+                    background-color: #404040;
+                    width: 12px;
+                    border: none;
+                }
+                QScrollBar::handle:vertical {
+                    background-color: #666666;
+                    border-radius: 6px;
+                    margin: 2px;
+                }
+                QScrollBar::handle:vertical:hover {
+                    background-color: #777777;
+                }
+                QScrollBar:horizontal {
+                    background-color: #404040;
+                    height: 12px;
+                    border: none;
+                }
+                QScrollBar::handle:horizontal {
+                    background-color: #666666;
+                    border-radius: 6px;
+                    margin: 2px;
+                }
+                QScrollBar::handle:horizontal:hover {
+                    background-color: #777777;
+                }
                 QGroupBox {
                     color: #ffffff;
+                    background-color: #2b2b2b;
                     border: 2px solid #555555;
                     border-radius: 5px;
                     margin: 5px 0px;
-                    padding-top: 10px;
+                    padding-top: 15px;
+                    font-weight: bold;
                 }
                 QGroupBox::title {
                     subcontrol-origin: margin;
                     left: 10px;
                     padding: 0px 5px 0px 5px;
+                    background-color: #2b2b2b;
                 }
                 QStatusBar {
                     background-color: #404040;
@@ -707,11 +803,70 @@ class ImageViewer(QMainWindow):
                 }
                 QSplitter::handle {
                     background-color: #555555;
+                    width: 3px;
+                    height: 3px;
+                }
+                QSplitter::handle:horizontal {
+                    background-color: #666666;
+                    width: 3px;
+                }
+                QSplitter::handle:vertical {
+                    background-color: #666666;
+                    height: 3px;
+                }
+                QCheckBox {
+                    color: #ffffff;
+                    background-color: #2b2b2b;
+                }
+                QCheckBox::indicator {
+                    width: 15px;
+                    height: 15px;
+                    background-color: #404040;
+                    border: 1px solid #555555;
+                    border-radius: 3px;
+                }
+                QCheckBox::indicator:checked {
+                    background-color: #0078d4;
+                    border: 1px solid #0078d4;
+                }
+                QLabel {
+                    color: #ffffff;
+                    background-color: transparent;
                 }
             """)
+            
+            # Apply dark theme to histogram widget
+            if hasattr(self, 'histogram_widget'):
+                self.histogram_widget.figure.patch.set_facecolor('#2b2b2b')
+                for ax in self.histogram_widget.figure.get_axes():
+                    ax.set_facecolor('#353535')
+                    ax.spines['bottom'].set_color('#777777')
+                    ax.spines['top'].set_color('#777777')
+                    ax.spines['left'].set_color('#777777')
+                    ax.spines['right'].set_color('#777777')
+                    ax.tick_params(colors='#ffffff')
+                    ax.xaxis.label.set_color('#ffffff')
+                    ax.yaxis.label.set_color('#ffffff')
+                    ax.title.set_color('#ffffff')
+                self.histogram_widget.canvas.draw()
         else:
             # Light theme (default)
             self.setStyleSheet("")
+            
+            # Apply light theme to histogram widget
+            if hasattr(self, 'histogram_widget'):
+                self.histogram_widget.figure.patch.set_facecolor('white')
+                for ax in self.histogram_widget.figure.get_axes():
+                    ax.set_facecolor('white')
+                    ax.spines['bottom'].set_color('black')
+                    ax.spines['top'].set_color('black')
+                    ax.spines['left'].set_color('black')
+                    ax.spines['right'].set_color('black')
+                    ax.tick_params(colors='black')
+                    ax.xaxis.label.set_color('black')
+                    ax.yaxis.label.set_color('black')
+                    ax.title.set_color('black')
+                self.histogram_widget.canvas.draw()
             
     def toggle_theme(self):
         """Toggle between dark and light themes"""
