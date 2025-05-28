@@ -82,7 +82,7 @@ python main.py
 
 ## 🚀 Quick Start
 
-### Option 1: Beautiful Optimized Version (Recommended)
+### Option 1: Quick Start (Recommended)
 ```bash
 # Clone the repository
 git clone https://github.com/Nhathuy7080zz/ImageViewerPro.git
@@ -91,8 +91,8 @@ cd ImageViewerPro
 # Install dependencies  
 pip install -r requirements.txt
 
-# Run the beautiful optimized version
-python main_optimized.py
+# Run the application
+python main.py
 ```
 
 ### Option 2: Use Pre-built Executable
@@ -101,19 +101,13 @@ python main_optimized.py
 ./dist/ImageViewerPro_Optimized.exe
 ```
 
-### Option 3: Development Version
-```bash
-# Run the development version
-python main.py
-```
-
-### Option 4: Command Line Usage
+### Option 3: Command Line Usage
 ```bash
 # Open specific image
-python main_optimized.py "path/to/image.jpg"
+python main.py "path/to/image.jpg"
 
 # Open directory
-python main_optimized.py "path/to/image/directory"
+python main.py "path/to/image/directory"
 ```
 
 ## 🛠️ Installation
