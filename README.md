@@ -26,7 +26,7 @@
 ## 🌟 Features
 
 ### 🔍 Advanced Image Viewing
-- **Multi-format Support**: JPG, PNG, BMP, GIF, TIFF, WebP, ICO, SVG
+- **Multi-format Support**: JPG, PNG, BMP, GIF, TIFF, WebP, ICO, SVG + **RAW Camera Files** (ARW, CR2, CR3, NEF, DNG, ORF, PEF, RW2, SRW, X3F)
 - **Advanced Zoom Controls**: Zoom in/out, fit to window, actual size (100%)
 - **Smooth Pan & Navigate**: Mouse-based panning and keyboard navigation
 - **Image Rotation**: 90-degree left/right rotation with smooth transitions
@@ -35,7 +35,7 @@
 ### 📁 File Management
 - **Thumbnail Browser**: Visual directory navigation with image previews
 - **Directory Loading**: Open entire folders with automatic image discovery
-- **Quick Navigation**: Arrow keys and space bar for rapid browsing
+- **Enhanced Navigation**: Arrow keys (Left/Right/Up/Down) and space bar for rapid browsing
 - **File Information**: Comprehensive file details and properties
 
 ### 📊 Professional Analysis Tools
@@ -57,8 +57,9 @@
 - **Ctrl+Shift+O**: Open Folder
 - **F11**: Toggle Fullscreen
 - **Ctrl+T**: Toggle Dark/Light Theme
-- **Left/Right**: Navigate Previous/Next Image
+- **Left/Right/Up/Down**: Navigate Previous/Next Image
 - **Space**: Next Image
+- **Backspace**: Previous Image
 - **Ctrl++/-**: Zoom In/Out
 - **Ctrl+0**: Actual Size (100%)
 - **Ctrl+9**: Fit to Window
@@ -290,6 +291,12 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ---
 
 ## 🚀 Recent Updates
+
+### Version 2.1 - Enhanced Format & Navigation Support (Latest)
+- ✅ **RAW Camera File Support**: Added comprehensive support for professional camera formats (ARW, CR2, CR3, NEF, DNG, ORF, PEF, RW2, SRW, X3F)
+- ✅ **Enhanced Navigation**: Added Up/Down arrow key navigation in addition to Left/Right arrows
+- ✅ **Improved Right Panel Layout**: Reorganized metadata and histogram display for better space utilization
+- ✅ **Enhanced File Dialogs**: Categorized file filters for better format selection experience
 
 ### Version 2.0
 - ✅ Complete application rewrite with modern architecture

@@ -134,3 +134,13 @@ icon.ico
 *.msi
 test_images/
 sample_images/
+
+# Development files
+COMPLETION_REPORT.md
+*_REPORT.md
+TODO.md
+NOTES.md
+
+# Build artifacts
+*.spec
+build_*.py

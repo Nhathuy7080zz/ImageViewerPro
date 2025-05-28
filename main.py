@@ -326,8 +326,7 @@ class BeautifulThumbnailWidget(QListWidget):
         return pixmap
         
     def load_directory(self, directory: str):
-        """Load directory with async thumbnails"""
-        # Stop existing worker
+        """Load directory with async thumbnails"""        # Stop existing worker
         if self.thumbnail_worker and self.thumbnail_worker.isRunning():
             self.thumbnail_worker.stop()
             self.thumbnail_worker.wait()
@@ -336,8 +335,13 @@ class BeautifulThumbnailWidget(QListWidget):
         self.image_paths.clear()
         self.thumbnail_cache.clear()
         
-        # Fast file scanning
-        supported_formats = {'.jpg', '.jpeg', '.png', '.bmp', '.gif', '.tiff', '.tif', '.webp', '.ico'}
+        # Fast file scanning - Enhanced with RAW format support
+        supported_formats = {
+            # Standard formats
+            '.jpg', '.jpeg', '.png', '.bmp', '.gif', '.tiff', '.tif', '.webp', '.ico',
+            # RAW camera formats
+            '.arw', '.cr2', '.cr3', '.nef', '.dng', '.raw', '.orf', '.pef', '.rw2', '.srw', '.x3f'
+        }
         
         try:
             directory_path = Path(directory)
@@ -782,8 +786,7 @@ class ImageViewer(QMainWindow):
             QPushButton:hover {
                 background-color: #14a085;
                 border: 2px solid #1bb299;
-            }
-            QPushButton:pressed {
+            }            QPushButton:pressed {
                 background-color: #0a5a5d;
             }
         """
@@ -816,7 +819,14 @@ class ImageViewer(QMainWindow):
         controls_layout.addWidget(self.zoom_out_btn)
         controls_layout.addWidget(self.zoom_fit_btn)
         controls_layout.addWidget(self.zoom_actual_btn)
-        controls_layout.addSeparator()
+        
+        # Add separator frame
+        separator = QFrame()
+        separator.setFrameShape(QFrame.VLine)
+        separator.setFrameShadow(QFrame.Sunken)
+        separator.setStyleSheet("color: #3c3c3c;")
+        controls_layout.addWidget(separator)
+        
         controls_layout.addWidget(self.rotate_left_btn)
         controls_layout.addWidget(self.rotate_right_btn)
         controls_layout.addStretch()
@@ -843,8 +853,7 @@ class ImageViewer(QMainWindow):
                 border-radius: 8px;
                 margin-top: 8px;
                 padding-top: 12px;
-            }
-            QGroupBox::title {
+            }            QGroupBox::title {
                 subcontrol-origin: margin;
                 left: 12px;
                 padding: 0 8px 0 8px;
@@ -858,9 +867,10 @@ class ImageViewer(QMainWindow):
         self.metadata_widget = BeautifulMetadataWidget()
         metadata_layout.addWidget(self.metadata_widget)
         
-        right_layout.addWidget(metadata_group)
+        # Add metadata with expanded space (stretch factor of 3)
+        right_layout.addWidget(metadata_group, 3)
         
-        # Histogram panel
+        # Histogram panel positioned at bottom
         histogram_group = QGroupBox("📊 Color Analysis")
         histogram_group.setStyleSheet("""
             QGroupBox {
@@ -886,8 +896,8 @@ class ImageViewer(QMainWindow):
         self.histogram_widget = BeautifulHistogramWidget()
         histogram_layout.addWidget(self.histogram_widget)
         
-        right_layout.addWidget(histogram_group)
-        right_layout.addStretch()
+        # Add histogram at bottom with fixed space (stretch factor of 1)
+        right_layout.addWidget(histogram_group, 1)
         
         self.splitter.addWidget(right_widget)
         
@@ -973,8 +983,7 @@ class ImageViewer(QMainWindow):
         exit_action.setShortcut(QKeySequence.Quit)
         exit_action.triggered.connect(self.close)
         file_menu.addAction(exit_action)
-        
-        # View menu
+          # View menu
         view_menu = menubar.addMenu("👁️ View")
         
         fullscreen_action = QAction("🖥️ Fullscreen", self)
@@ -1028,6 +1037,8 @@ class ImageViewer(QMainWindow):
         # Navigation shortcuts
         self.addAction(self.create_action("Left", self.previous_image))
         self.addAction(self.create_action("Right", self.next_image))
+        self.addAction(self.create_action("Up", self.previous_image))    # Added up arrow navigation
+        self.addAction(self.create_action("Down", self.next_image))      # Added down arrow navigation
         self.addAction(self.create_action("Space", self.next_image))
         self.addAction(self.create_action("Backspace", self.previous_image))
         
@@ -1076,8 +1087,7 @@ class ImageViewer(QMainWindow):
                     background-color: #f5f5f5;
                     color: #333333;
                     font-family: 'Segoe UI', Arial, sans-serif;
-                }
-            """)
+                }            """)
             
     def toggle_fullscreen(self):
         """Toggle fullscreen mode"""
@@ -1091,7 +1101,7 @@ class ImageViewer(QMainWindow):
         """Open single image with beautiful dialog"""
         file_path, _ = QFileDialog.getOpenFileName(
             self, "🖼️ Open Image File", "", 
-            "Images (*.jpg *.jpeg *.png *.bmp *.gif *.tiff *.webp *.ico);;All Files (*)"
+            "Images (*.jpg *.jpeg *.png *.bmp *.gif *.tiff *.webp *.ico *.arw *.cr2 *.cr3 *.nef *.dng *.raw *.orf *.pef *.rw2 *.srw *.x3f);;Standard Images (*.jpg *.jpeg *.png *.bmp *.gif *.tiff *.webp *.ico);;RAW Images (*.arw *.cr2 *.cr3 *.nef *.dng *.raw *.orf *.pef *.rw2 *.srw *.x3f);;All Files (*)"
         )
         
         if file_path:
