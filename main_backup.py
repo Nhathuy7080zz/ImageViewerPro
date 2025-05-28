@@ -1,0 +1,1161 @@
+#!/usr/bin/env python3
+"""
+ImageViewer Pro - Professional Image Viewer Application
+Author: Phan Nhật Huy
+License: MIT License
+Description: A modern, feature-rich image viewer with advanced capabilities
+"""
+
+import sys
+import os
+import subprocess
+import json
+import datetime
+from pathlib import Path
+from typing import List, Optional, Tuple, Dict, Any
+
+# Optimized imports - no auto-install for better startup speed
+try:
+    from PyQt5.QtWidgets import (
+        QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
+        QLabel, QScrollArea, QPushButton, QFileDialog, QSplitter,
+        QListWidget, QListWidgetItem, QTextEdit, QAction, QMenuBar,
+        QStatusBar, QFrame, QSlider, QSpinBox, QComboBox, QGroupBox,
+        QGridLayout, QMessageBox, QProgressBar, QCheckBox
+    )
+    from PyQt5.QtCore import Qt, QTimer, QThread, pyqtSignal, QSize, QPoint
+    from PyQt5.QtGui import (
+        QPixmap, QIcon, QPainter, QPen, QBrush, QFont, QPalette,
+        QKeySequence, QCursor, QTransform
+    )
+except ImportError as e:
+    print(f"❌ Error importing PyQt5: {e}")
+    print("Please install required dependencies: pip install -r requirements.txt")
+    sys.exit(1)
+    sys.exit(1)
+
+try:
+    from PIL import Image, ImageQt, ExifTags
+    from PIL.ExifTags import TAGS
+except ImportError as e:
+    print(f"Error importing Pillow: {e}")
+    sys.exit(1)
+
+try:
+    import matplotlib.pyplot as plt
+    from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
+    from matplotlib.figure import Figure
+    import numpy as np
+except ImportError as e:
+    print(f"Error importing matplotlib: {e}")
+    sys.exit(1)
+
+
+class HistogramWidget(QWidget):
+    """Custom widget for displaying image histograms"""
+    
+    def __init__(self):
+        super().__init__()
+        self.setup_ui()
+        self.current_image = None
+        
+    def setup_ui(self):
+        layout = QVBoxLayout(self)
+        
+        # Create matplotlib figure
+        self.figure = Figure(figsize=(6, 4), dpi=80)
+        self.figure.patch.set_facecolor('white')
+        self.canvas = FigureCanvas(self.figure)
+        layout.addWidget(self.canvas)
+        
+        # Controls
+        controls_layout = QHBoxLayout()
+        
+        self.show_rgb = QCheckBox("RGB")
+        self.show_rgb.setChecked(True)
+        self.show_rgb.stateChanged.connect(self.update_histogram)
+        
+        self.show_luminance = QCheckBox("Luminance")
+        self.show_luminance.setChecked(False)
+        self.show_luminance.stateChanged.connect(self.update_histogram)
+        
+        controls_layout.addWidget(self.show_rgb)
+        controls_layout.addWidget(self.show_luminance)
+        controls_layout.addStretch()
+        
+        layout.addLayout(controls_layout)
+        
+    def set_image(self, image_path: str):
+        """Set the current image and update histogram"""
+        try:
+            self.current_image = Image.open(image_path)
+            if self.current_image.mode != 'RGB':
+                self.current_image = self.current_image.convert('RGB')
+            self.update_histogram()
+        except Exception as e:
+            print(f"Error loading image for histogram: {e}")
+            
+    def update_histogram(self):
+        """Update the histogram display"""
+        if not self.current_image:
+            return
+            
+        self.figure.clear()
+        ax = self.figure.add_subplot(111)
+        
+        # Convert PIL image to numpy array
+        img_array = np.array(self.current_image)
+        
+        if self.show_rgb.isChecked():
+            # RGB histogram
+            colors = ['red', 'green', 'blue']
+            for i, color in enumerate(colors):
+                ax.hist(img_array[:, :, i].ravel(), bins=256, 
+                       color=color, alpha=0.6, label=color.title())
+            ax.legend()
+            
+        if self.show_luminance.isChecked():
+            # Luminance histogram
+            luminance = 0.299 * img_array[:, :, 0] + 0.587 * img_array[:, :, 1] + 0.114 * img_array[:, :, 2]
+            ax.hist(luminance.ravel(), bins=256, color='gray', alpha=0.8, label='Luminance')
+            ax.legend()
+            
+        ax.set_xlim(0, 255)
+        ax.set_xlabel('Pixel Value')
+        ax.set_ylabel('Frequency')
+        ax.set_title('Image Histogram')
+        ax.grid(True, alpha=0.3)
+        
+        self.canvas.draw()
+
+
+class ImageLabel(QLabel):
+    """Custom QLabel for displaying images with zoom and pan capabilities"""
+    
+    def __init__(self):
+        super().__init__()
+        self.setAlignment(Qt.AlignCenter)
+        self.setMinimumSize(400, 300)
+        self.setStyleSheet("border: 1px solid gray;")
+        
+        # Image properties
+        self.original_pixmap = None
+        self.scale_factor = 1.0
+        self.rotation_angle = 0
+        self.pan_offset = QPoint(0, 0)
+        self.dragging = False
+        self.last_pan_point = QPoint()
+          # Enable mouse tracking and panning
+        self.setMouseTracking(True)
+        self.setScaledContents(False)
+        
+        # Keep reference to scroll area for panning
+        self.scroll_area = None
+        
+    def set_image(self, pixmap: QPixmap):
+        """Set the image to display"""
+        self.original_pixmap = pixmap
+        self.scale_factor = 1.0
+        self.rotation_angle = 0
+        self.pan_offset = QPoint(0, 0)
+        self.update_display()
+        
+    def set_scroll_area(self, scroll_area):
+        """Set reference to scroll area for advanced panning"""
+        self.scroll_area = scroll_area
+        
+    def update_display(self):
+        """Update the displayed image with current transformations"""
+        if not self.original_pixmap:
+            return
+            
+        # Apply rotation
+        transform = QTransform()
+        transform.rotate(self.rotation_angle)
+        rotated_pixmap = self.original_pixmap.transformed(transform, Qt.SmoothTransformation)
+        
+        # Apply scaling
+        scaled_size = rotated_pixmap.size() * self.scale_factor
+        scaled_pixmap = rotated_pixmap.scaled(scaled_size, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+          # Update widget size to match scaled image for proper scrolling
+        self.resize(scaled_pixmap.size())
+        self.setPixmap(scaled_pixmap)
+        
+    def zoom_in(self):
+        """Zoom in by 25%"""
+        self.scale_factor *= 1.25
+        self.update_display()
+        
+    def zoom_out(self):
+        """Zoom out by 25%"""
+        self.scale_factor *= 0.8
+        self.update_display()
+        
+    def zoom_fit(self):
+        """Fit image to widget size"""
+        if not self.original_pixmap:
+            return
+            
+        widget_size = self.size()
+        pixmap_size = self.original_pixmap.size()
+        
+        scale_x = widget_size.width() / pixmap_size.width()
+        scale_y = widget_size.height() / pixmap_size.height()
+        
+        self.scale_factor = min(scale_x, scale_y) * 0.9  # 90% to leave some margin
+        self.pan_offset = QPoint(0, 0)
+        self.update_display()
+        
+    def zoom_actual(self):
+        """Show image at actual size (100%)"""
+        self.scale_factor = 1.0
+        self.pan_offset = QPoint(0, 0)
+        self.update_display()
+        
+    def rotate_left(self):
+        """Rotate image 90 degrees counter-clockwise"""
+        self.rotation_angle = (self.rotation_angle - 90) % 360
+        self.update_display()
+        
+    def rotate_right(self):
+        """Rotate image 90 degrees clockwise"""
+        self.rotation_angle = (self.rotation_angle + 90) % 360
+        self.update_display()
+        
+    def wheelEvent(self, event):
+        """Handle mouse wheel for zooming at cursor position"""
+        if not self.original_pixmap:
+            return
+            
+        # Get the position of the mouse cursor
+        cursor_pos = event.pos()
+        
+        # Store old scale factor
+        old_scale = self.scale_factor
+        
+        # Zoom in/out
+        if event.angleDelta().y() > 0:
+            self.scale_factor *= 1.25
+        else:
+            self.scale_factor *= 0.8
+            
+        # Limit zoom levels
+        self.scale_factor = max(0.1, min(20.0, self.scale_factor))
+        
+        # Update display
+        self.update_display()
+        
+        # Adjust scroll position to zoom at cursor
+        if self.scroll_area and old_scale != self.scale_factor:
+            scale_ratio = self.scale_factor / old_scale
+            h_bar = self.scroll_area.horizontalScrollBar()
+            v_bar = self.scroll_area.verticalScrollBar()
+              # Calculate new scroll positions to keep cursor position stable
+            new_h = int((h_bar.value() + cursor_pos.x()) * scale_ratio - cursor_pos.x())
+            new_v = int((v_bar.value() + cursor_pos.y()) * scale_ratio - cursor_pos.y())
+            
+            h_bar.setValue(new_h)
+            v_bar.setValue(new_v)
+            
+    def mousePressEvent(self, event):
+        """Handle mouse press for panning"""
+        if event.button() == Qt.LeftButton:
+            self.dragging = True
+            self.last_pan_point = event.pos()
+            self.setCursor(QCursor(Qt.ClosedHandCursor))
+    
+    def mouseMoveEvent(self, event):
+        """Handle mouse move for panning"""
+        if self.dragging and self.scroll_area:
+            delta = event.pos() - self.last_pan_point
+            
+            # Move scroll bars based on mouse movement
+            h_bar = self.scroll_area.horizontalScrollBar()
+            v_bar = self.scroll_area.verticalScrollBar()
+            
+            # Invert delta for natural panning behavior
+            h_bar.setValue(h_bar.value() - delta.x())
+            v_bar.setValue(v_bar.value() - delta.y())
+            
+            self.last_pan_point = event.pos()
+            
+    def mouseReleaseEvent(self, event):
+        """Handle mouse release"""
+        if event.button() == Qt.LeftButton:
+            self.dragging = False
+            self.setCursor(QCursor(Qt.ArrowCursor))
+
+
+class ThumbnailWorker(QThread):
+    """Background worker for loading thumbnails asynchronously"""
+    thumbnail_ready = pyqtSignal(str, QPixmap, str)  # path, pixmap, filename
+    
+    def __init__(self, image_paths, thumbnail_size=(120, 120)):
+        super().__init__()
+        self.image_paths = image_paths
+        self.thumbnail_size = thumbnail_size
+        self.should_stop = False
+        
+    def run(self):
+        """Generate thumbnails in background"""
+        for image_path in self.image_paths:
+            if self.should_stop:
+                break
+                
+            try:
+                # Quick file check
+                if not os.path.exists(image_path):
+                    continue
+                    
+                # Create thumbnail with optimized settings
+                with Image.open(image_path) as image:
+                    # Convert to RGB if necessary (for RGBA/P mode images)
+                    if image.mode in ('RGBA', 'P'):
+                        image = image.convert('RGB')
+                    
+                    # Fast thumbnail generation
+                    image.thumbnail(self.thumbnail_size, Image.Resampling.FAST)
+                    
+                    # Quick conversion to bytes
+                    import io
+                    byte_array = io.BytesIO()
+                    image.save(byte_array, format='JPEG', quality=85, optimize=True)
+                    byte_array.seek(0)
+                    
+                    # Create QPixmap
+                    pixmap = QPixmap()
+                    pixmap.loadFromData(byte_array.getvalue())
+                    
+                    # Emit signal with result
+                    filename = Path(image_path).name
+                    self.thumbnail_ready.emit(image_path, pixmap, filename)
+                    
+            except Exception as e:
+                # Skip problematic images silently for better performance
+                continue
+                
+    def stop(self):
+        """Stop the worker"""
+        self.should_stop = True
+
+
+class ThumbnailWidget(QListWidget):
+    """Optimized widget for displaying image thumbnails with async loading"""
+      def __init__(self):
+        super().__init__()
+        self.setViewMode(QListWidget.IconMode)
+        self.setIconSize(QSize(120, 120))
+        self.setResizeMode(QListWidget.Adjust)
+        self.setSpacing(5)
+        self.setUniformItemSizes(True)
+        
+        # Store image paths and thumbnail cache
+        self.image_paths = []
+        self.thumbnail_cache = {}
+        self.thumbnail_worker = None
+        
+        # Default placeholder icon
+        self.placeholder_pixmap = self.create_placeholder()
+        
+    def create_placeholder(self):
+        """Create a placeholder icon for loading thumbnails"""
+        pixmap = QPixmap(120, 120)
+        pixmap.fill(Qt.lightGray)
+        painter = QPainter(pixmap)
+        painter.setPen(Qt.darkGray)
+        painter.drawText(pixmap.rect(), Qt.AlignCenter, "📷")
+        painter.end()
+        return pixmap
+        
+    def load_directory(self, directory: str):
+        """Load all images from a directory with async thumbnail loading"""
+        # Stop any existing worker
+        if self.thumbnail_worker and self.thumbnail_worker.isRunning():
+            self.thumbnail_worker.stop()
+            self.thumbnail_worker.wait()
+            
+        self.clear()
+        self.image_paths.clear()
+        self.thumbnail_cache.clear()
+        
+        # Supported image formats
+        supported_formats = {'.jpg', '.jpeg', '.png', '.bmp', '.gif', '.tiff', '.tif', '.webp', '.ico'}
+        
+        try:
+            directory_path = Path(directory)
+            image_files = []
+            
+            # Quick scan for image files
+            for file_path in directory_path.iterdir():
+                if file_path.suffix.lower() in supported_formats and file_path.is_file():
+                    image_files.append(str(file_path))
+                    
+            if not image_files:
+                return
+                
+            # Store paths
+            self.image_paths = image_files
+            
+            # Create placeholder items immediately for responsiveness
+            for image_path in image_files:
+                item = QListWidgetItem()
+                item.setIcon(QIcon(self.placeholder_pixmap))
+                item.setText(Path(image_path).name)
+                item.setToolTip(image_path)
+                self.addItem(item)
+            
+            # Start async thumbnail loading
+            self.thumbnail_worker = ThumbnailWorker(image_files)
+            self.thumbnail_worker.thumbnail_ready.connect(self.on_thumbnail_ready)
+            self.thumbnail_worker.start()
+            
+        except Exception as e:
+            print(f"Error loading directory: {e}")
+            
+    def on_thumbnail_ready(self, image_path: str, pixmap: QPixmap, filename: str):
+        """Handle completed thumbnail"""
+        try:
+            # Find the item and update its icon
+            for i in range(self.count()):
+                item = self.item(i)
+                if item.toolTip() == image_path:
+                    item.setIcon(QIcon(pixmap))
+                    self.thumbnail_cache[image_path] = pixmap
+                    break
+        except Exception as e:
+            # Ignore errors for better performance
+            pass            
+    def add_thumbnail(self, image_path: str):
+        """Add a thumbnail for an image (legacy method, now uses async)"""
+        # This method is kept for compatibility but not used in async loading
+        pass
+            
+    def get_selected_image_path(self) -> Optional[str]:
+        """Get the path of the currently selected image"""
+        current_row = self.currentRow()
+        if 0 <= current_row < len(self.image_paths):
+            return self.image_paths[current_row]
+        return None
+        
+    def cleanup(self):
+        """Clean up worker thread"""
+        if self.thumbnail_worker and self.thumbnail_worker.isRunning():
+            self.thumbnail_worker.stop()
+            self.thumbnail_worker.wait()
+
+
+class MetadataWidget(QTextEdit):
+    """Widget for displaying image metadata and EXIF information"""
+    
+    def __init__(self):
+        super().__init__()
+        self.setReadOnly(True)
+        self.setMaximumWidth(320)  # Slightly wider for better table display
+        self.setFont(QFont("Segoe UI", 9))  # Better font for tables
+        # Enable HTML rendering
+        self.setHtml("<p>Select an image to view metadata...</p>")
+        
+    def display_metadata(self, image_path: str):
+        """Display metadata for the given image"""
+        try:
+            # Basic file information
+            file_path = Path(image_path)
+            file_stat = file_path.stat()
+            
+            metadata_text = f"""
+<div style="font-family: 'Segoe UI', Arial, sans-serif; line-height: 1.6;">
+
+<table style="width: 100%; border-collapse: collapse; margin-bottom: 15px;">
+<tr style="background-color: #f0f0f0;"><td colspan="2" style="padding: 8px; border: 1px solid #ddd; font-weight: bold; font-size: 14px;">📁 File Information</td></tr>
+<tr><td style="padding: 5px; border: 1px solid #ddd; font-weight: bold; width: 30%;">📄 Name:</td><td style="padding: 5px; border: 1px solid #ddd;">{file_path.name}</td></tr>
+<tr><td style="padding: 5px; border: 1px solid #ddd; font-weight: bold;">📂 Directory:</td><td style="padding: 5px; border: 1px solid #ddd; word-break: break-all;">{file_path.parent}</td></tr>
+<tr><td style="padding: 5px; border: 1px solid #ddd; font-weight: bold;">📏 Size:</td><td style="padding: 5px; border: 1px solid #ddd;">{self.format_file_size(file_stat.st_size)}</td></tr>
+<tr><td style="padding: 5px; border: 1px solid #ddd; font-weight: bold;">📅 Modified:</td><td style="padding: 5px; border: 1px solid #ddd;">{self.format_timestamp(file_stat.st_mtime)}</td></tr>
+</table>
+
+"""
+            
+            # Image information
+            try:
+                with Image.open(image_path) as img:
+                    metadata_text += f"""
+<table style="width: 100%; border-collapse: collapse; margin-bottom: 15px;">
+<tr style="background-color: #f0f0f0;"><td colspan="2" style="padding: 8px; border: 1px solid #ddd; font-weight: bold; font-size: 14px;">🖼️ Image Properties</td></tr>
+<tr><td style="padding: 5px; border: 1px solid #ddd; font-weight: bold; width: 30%;">📐 Dimensions:</td><td style="padding: 5px; border: 1px solid #ddd;">{img.size[0]} × {img.size[1]} pixels</td></tr>
+<tr><td style="padding: 5px; border: 1px solid #ddd; font-weight: bold;">🎨 Mode:</td><td style="padding: 5px; border: 1px solid #ddd;">{img.mode}</td></tr>
+<tr><td style="padding: 5px; border: 1px solid #ddd; font-weight: bold;">📋 Format:</td><td style="padding: 5px; border: 1px solid #ddd;">{img.format}</td></tr>
+</table>
+
+"""
+                    
+                    # EXIF data
+                    exif_data = img._getexif()
+                    if exif_data:
+                        metadata_text += """
+<table style="width: 100%; border-collapse: collapse; margin-bottom: 15px;">
+<tr style="background-color: #f0f0f0;"><td colspan="2" style="padding: 8px; border: 1px solid #ddd; font-weight: bold; font-size: 14px;">📸 EXIF Data</td></tr>
+"""
+                        
+                        # Key EXIF tags we want to display
+                        important_tags = {
+                            'Make': '📱 Camera Make',
+                            'Model': '📷 Camera Model',
+                            'DateTime': '📅 Date Taken',
+                            'ExifImageWidth': '📐 EXIF Width',
+                            'ExifImageHeight': '📐 EXIF Height',
+                            'Orientation': '🔄 Orientation',
+                            'XResolution': '🔍 X Resolution',
+                            'YResolution': '🔍 Y Resolution',
+                            'Flash': '⚡ Flash',
+                            'FocalLength': '🔍 Focal Length',
+                            'ISOSpeedRatings': '📊 ISO',
+                            'ExposureTime': '⏱️ Exposure Time',
+                            'FNumber': '🕳️ F-Number',
+                            'WhiteBalance': '⚖️ White Balance',
+                            'ColorSpace': '🌈 Color Space'
+                        }
+                        
+                        exif_count = 0
+                        for tag_id, value in exif_data.items():
+                            tag = TAGS.get(tag_id, tag_id)
+                            if tag in important_tags:
+                                emoji_tag = important_tags[tag]
+                                # Format values nicely
+                                if isinstance(value, tuple) and len(value) == 2:
+                                    formatted_value = f"{value[0]}/{value[1]}"
+                                else:
+                                    formatted_value = str(value)
+                                metadata_text += f'<tr><td style="padding: 5px; border: 1px solid #ddd; font-weight: bold; width: 30%;">{emoji_tag}:</td><td style="padding: 5px; border: 1px solid #ddd;">{formatted_value}</td></tr>\n'
+                                exif_count += 1
+                        
+                        if exif_count == 0:
+                            metadata_text += '<tr><td colspan="2" style="padding: 8px; border: 1px solid #ddd; font-style: italic; text-align: center;">📸 No EXIF data available</td></tr>'
+                        
+                        metadata_text += "</table>"
+                    else:
+                        metadata_text += """
+<table style="width: 100%; border-collapse: collapse; margin-bottom: 15px;">
+<tr style="background-color: #f0f0f0;"><td colspan="2" style="padding: 8px; border: 1px solid #ddd; font-weight: bold; font-size: 14px;">📸 EXIF Data</td></tr>
+<tr><td colspan="2" style="padding: 8px; border: 1px solid #ddd; font-style: italic; text-align: center;">📸 No EXIF data available</td></tr>
+</table>
+"""
+                        
+            except Exception as e:
+                metadata_text += f"""
+<table style="width: 100%; border-collapse: collapse; margin-bottom: 15px;">
+<tr style="background-color: #ffebee;"><td style="padding: 8px; border: 1px solid #ddd; color: #c62828;">❌ <b>Error reading image:</b> {str(e)}</td></tr>
+</table>
+"""
+                
+        except Exception as e:
+            metadata_text = f"""
+<div style="font-family: 'Segoe UI', Arial, sans-serif;">
+<table style="width: 100%; border-collapse: collapse;">
+<tr style="background-color: #ffebee;"><td style="padding: 8px; border: 1px solid #ddd; color: #c62828;">❌ <b>Error reading file:</b> {str(e)}</td></tr>
+</table>
+</div>
+"""
+            
+        metadata_text += "</div>"
+        self.setHtml(metadata_text)
+        
+    def format_file_size(self, size_bytes: int) -> str:
+        """Format file size in human-readable format"""
+        for unit in ['B', 'KB', 'MB', 'GB']:
+            if size_bytes < 1024:
+                return f"{size_bytes:.1f} {unit}"
+            size_bytes /= 1024
+        return f"{size_bytes:.1f} TB"
+        
+    def format_timestamp(self, timestamp: float) -> str:
+        """Format timestamp in readable format"""
+        import datetime
+        dt = datetime.datetime.fromtimestamp(timestamp)
+        return dt.strftime("%Y-%m-%d %H:%M:%S")
+
+
+class ImageViewer(QMainWindow):
+    """Main ImageViewer Pro application"""
+    
+    def __init__(self):
+        super().__init__()
+        self.current_image_path = None
+        self.image_list = []
+        self.current_index = 0
+        self.is_fullscreen = False
+        self.dark_theme = False
+        
+        self.setup_ui()
+        self.setup_menus()
+        self.setup_shortcuts()
+        self.apply_theme()
+        
+    def closeEvent(self, event):
+        """Handle application close event"""
+        # Cleanup thumbnail worker
+        if hasattr(self, 'thumbnail_widget'):
+            self.thumbnail_widget.cleanup()
+        event.accept()
+
+    def setup_ui(self):
+        """Setup the user interface"""
+        self.setWindowTitle("ImageViewer Pro v2.0")
+        self.setGeometry(100, 100, 1400, 900)
+        
+        # Central widget with splitter
+        central_widget = QWidget()
+        self.setCentralWidget(central_widget)
+        
+        main_layout = QHBoxLayout(central_widget)
+        
+        # Create splitter for three panels
+        self.splitter = QSplitter(Qt.Horizontal)
+        main_layout.addWidget(self.splitter)
+        
+        # Left panel - Thumbnails
+        self.thumbnail_widget = ThumbnailWidget()
+        self.thumbnail_widget.itemClicked.connect(self.on_thumbnail_clicked)
+        self.splitter.addWidget(self.thumbnail_widget)
+        
+        # Center panel - Main image display
+        center_widget = QWidget()
+        center_layout = QVBoxLayout(center_widget)
+          # Image display area
+        self.scroll_area = QScrollArea()
+        self.image_label = ImageLabel()
+        self.scroll_area.setWidget(self.image_label)
+        self.scroll_area.setWidgetResizable(True)
+        
+        # Connect scroll area to image label for panning
+        self.image_label.set_scroll_area(self.scroll_area)
+        
+        center_layout.addWidget(self.scroll_area)
+          # Image controls
+        controls_layout = QHBoxLayout()
+        
+        self.zoom_in_btn = QPushButton("🔍+ Zoom In")
+        self.zoom_in_btn.clicked.connect(self.image_label.zoom_in)
+        
+        self.zoom_out_btn = QPushButton("🔍- Zoom Out")
+        self.zoom_out_btn.clicked.connect(self.image_label.zoom_out)
+        
+        self.zoom_fit_btn = QPushButton("📏 Fit")
+        self.zoom_fit_btn.clicked.connect(self.image_label.zoom_fit)
+        
+        self.zoom_actual_btn = QPushButton("1:1")
+        self.zoom_actual_btn.setToolTip("Actual Size (100%)")
+        self.zoom_actual_btn.clicked.connect(self.image_label.zoom_actual)
+        
+        self.rotate_left_btn = QPushButton("↺ Rotate Left")
+        self.rotate_left_btn.clicked.connect(self.image_label.rotate_left)
+        
+        self.rotate_right_btn = QPushButton("↻ Rotate Right")
+        self.rotate_right_btn.clicked.connect(self.image_label.rotate_right)
+        
+        controls_layout.addWidget(self.zoom_in_btn)
+        controls_layout.addWidget(self.zoom_out_btn)
+        controls_layout.addWidget(self.zoom_fit_btn)
+        controls_layout.addWidget(self.zoom_actual_btn)
+        controls_layout.addWidget(self.rotate_left_btn)
+        controls_layout.addWidget(self.rotate_right_btn)
+        controls_layout.addStretch()
+        
+        center_layout.addLayout(controls_layout)
+        self.splitter.addWidget(center_widget)
+        
+        # Right panel - Metadata and histogram
+        right_widget = QWidget()
+        right_layout = QVBoxLayout(right_widget)
+        
+        # Metadata display
+        metadata_group = QGroupBox("📋 Image Information")
+        metadata_layout = QVBoxLayout(metadata_group)
+        self.metadata_widget = MetadataWidget()
+        metadata_layout.addWidget(self.metadata_widget)
+        right_layout.addWidget(metadata_group)
+        
+        # Histogram display
+        histogram_group = QGroupBox("📊 Histogram")
+        histogram_layout = QVBoxLayout(histogram_group)
+        self.histogram_widget = HistogramWidget()
+        histogram_layout.addWidget(self.histogram_widget)
+        right_layout.addWidget(histogram_group)
+        
+        self.splitter.addWidget(right_widget)
+        
+        # Configure splitter for better resizing
+        self.splitter.setCollapsible(0, True)  # Allow left panel to collapse
+        self.splitter.setCollapsible(1, False) # Don't allow center panel to collapse
+        self.splitter.setCollapsible(2, True)  # Allow right panel to collapse
+        
+        # Set splitter proportions (more flexible sizing)
+        self.splitter.setSizes([280, 700, 380])
+        
+        # Set minimum sizes for panels
+        self.thumbnail_widget.setMinimumWidth(200)
+        center_widget.setMinimumWidth(400)
+        right_widget.setMinimumWidth(250)
+        
+        # Make splitter handles more visible
+        self.splitter.setHandleWidth(5)
+        
+        # Status bar
+        self.status_bar = QStatusBar()
+        self.setStatusBar(self.status_bar)
+        self.status_bar.showMessage("Ready - Open an image to start")
+        
+    def setup_menus(self):
+        """Setup application menus"""
+        menubar = self.menuBar()
+        
+        # File menu
+        file_menu = menubar.addMenu('📁 File')
+        
+        open_action = QAction('📂 Open Image...', self)
+        open_action.setShortcut(QKeySequence.Open)
+        open_action.triggered.connect(self.open_image)
+        file_menu.addAction(open_action)
+        
+        open_folder_action = QAction('📁 Open Folder...', self)
+        open_folder_action.setShortcut('Ctrl+Shift+O')
+        open_folder_action.triggered.connect(self.open_folder)
+        file_menu.addAction(open_folder_action)
+        
+        file_menu.addSeparator()
+        
+        exit_action = QAction('🚪 Exit', self)
+        exit_action.setShortcut(QKeySequence.Quit)
+        exit_action.triggered.connect(self.close)
+        file_menu.addAction(exit_action)
+        
+        # View menu
+        view_menu = menubar.addMenu('👁️ View')
+        
+        fullscreen_action = QAction('🖥️ Fullscreen', self)
+        fullscreen_action.setShortcut('F11')
+        fullscreen_action.triggered.connect(self.toggle_fullscreen)
+        view_menu.addAction(fullscreen_action)
+        
+        view_menu.addSeparator()
+        
+        theme_action = QAction('🌙 Toggle Dark Theme', self)
+        theme_action.setShortcut('Ctrl+T')
+        theme_action.triggered.connect(self.toggle_theme)
+        view_menu.addAction(theme_action)
+        
+        # Navigation menu
+        nav_menu = menubar.addMenu('🧭 Navigation')
+        
+        prev_action = QAction('⬅️ Previous Image', self)
+        prev_action.setShortcut('Left')
+        prev_action.triggered.connect(self.previous_image)
+        nav_menu.addAction(prev_action)
+        
+        next_action = QAction('➡️ Next Image', self)
+        next_action.setShortcut('Right')
+        next_action.triggered.connect(self.next_image)
+        nav_menu.addAction(next_action)
+        
+        # Help menu
+        help_menu = menubar.addMenu('❓ Help')
+        
+        about_action = QAction('ℹ️ About', self)
+        about_action.triggered.connect(self.show_about)
+        help_menu.addAction(about_action)
+        
+    def setup_shortcuts(self):
+        """Setup keyboard shortcuts"""
+        # Additional shortcuts not covered by menu actions
+        from PyQt5.QtWidgets import QShortcut
+        
+        # Zoom shortcuts
+        QShortcut(QKeySequence("Ctrl+="), self, self.image_label.zoom_in)
+        QShortcut(QKeySequence("Ctrl+-"), self, self.image_label.zoom_out)
+        QShortcut(QKeySequence("Ctrl+0"), self, self.image_label.zoom_actual)
+        QShortcut(QKeySequence("Ctrl+9"), self, self.image_label.zoom_fit)
+          # Rotation shortcuts
+        QShortcut(QKeySequence("Ctrl+L"), self, self.image_label.rotate_left)
+        QShortcut(QKeySequence("Ctrl+R"), self, self.image_label.rotate_right)
+        
+    def apply_theme(self):
+        """Apply current theme to the application"""
+        if self.dark_theme:
+            # Dark theme with comprehensive styling
+            self.setStyleSheet("""
+                QMainWindow {
+                    background-color: #2b2b2b;
+                    color: #ffffff;
+                }
+                QWidget {
+                    background-color: #2b2b2b;
+                    color: #ffffff;
+                }
+                QMenuBar {
+                    background-color: #404040;
+                    color: #ffffff;
+                    border-bottom: 1px solid #555555;
+                }
+                QMenuBar::item:selected {
+                    background-color: #555555;
+                }
+                QMenu {
+                    background-color: #404040;
+                    color: #ffffff;
+                    border: 1px solid #555555;
+                }
+                QMenu::item:selected {
+                    background-color: #555555;
+                }
+                QPushButton {
+                    background-color: #404040;
+                    color: #ffffff;
+                    border: 1px solid #555555;
+                    padding: 5px;
+                    border-radius: 3px;
+                }
+                QPushButton:hover {
+                    background-color: #555555;
+                }
+                QPushButton:pressed {
+                    background-color: #666666;
+                }
+                QListWidget {
+                    background-color: #353535;
+                    color: #ffffff;
+                    border: 1px solid #555555;
+                    selection-background-color: #555555;
+                }
+                QListWidget::item:selected {
+                    background-color: #555555;
+                    color: #ffffff;
+                }
+                QTextEdit {
+                    background-color: #353535;
+                    color: #ffffff;
+                    border: 1px solid #555555;
+                }
+                QScrollArea {
+                    background-color: #2b2b2b;
+                    border: 1px solid #555555;
+                }
+                QScrollBar:vertical {
+                    background-color: #404040;
+                    width: 12px;
+                    border: none;
+                }
+                QScrollBar::handle:vertical {
+                    background-color: #666666;
+                    border-radius: 6px;
+                    margin: 2px;
+                }
+                QScrollBar::handle:vertical:hover {
+                    background-color: #777777;
+                }
+                QScrollBar:horizontal {
+                    background-color: #404040;
+                    height: 12px;
+                    border: none;
+                }
+                QScrollBar::handle:horizontal {
+                    background-color: #666666;
+                    border-radius: 6px;
+                    margin: 2px;
+                }
+                QScrollBar::handle:horizontal:hover {
+                    background-color: #777777;
+                }
+                QGroupBox {
+                    color: #ffffff;
+                    background-color: #2b2b2b;
+                    border: 2px solid #555555;
+                    border-radius: 5px;
+                    margin: 5px 0px;
+                    padding-top: 15px;
+                    font-weight: bold;
+                }
+                QGroupBox::title {
+                    subcontrol-origin: margin;
+                    left: 10px;
+                    padding: 0px 5px 0px 5px;
+                    background-color: #2b2b2b;
+                }
+                QStatusBar {
+                    background-color: #404040;
+                    color: #ffffff;
+                    border-top: 1px solid #555555;
+                }
+                QSplitter::handle {
+                    background-color: #555555;
+                    width: 3px;
+                    height: 3px;
+                }
+                QSplitter::handle:horizontal {
+                    background-color: #666666;
+                    width: 3px;
+                }
+                QSplitter::handle:vertical {
+                    background-color: #666666;
+                    height: 3px;
+                }
+                QCheckBox {
+                    color: #ffffff;
+                    background-color: #2b2b2b;
+                }
+                QCheckBox::indicator {
+                    width: 15px;
+                    height: 15px;
+                    background-color: #404040;
+                    border: 1px solid #555555;
+                    border-radius: 3px;
+                }
+                QCheckBox::indicator:checked {
+                    background-color: #0078d4;
+                    border: 1px solid #0078d4;
+                }
+                QLabel {
+                    color: #ffffff;
+                    background-color: transparent;
+                }
+            """)
+            
+            # Apply dark theme to histogram widget
+            if hasattr(self, 'histogram_widget'):
+                self.histogram_widget.figure.patch.set_facecolor('#2b2b2b')
+                for ax in self.histogram_widget.figure.get_axes():
+                    ax.set_facecolor('#353535')
+                    ax.spines['bottom'].set_color('#777777')
+                    ax.spines['top'].set_color('#777777')
+                    ax.spines['left'].set_color('#777777')
+                    ax.spines['right'].set_color('#777777')
+                    ax.tick_params(colors='#ffffff')
+                    ax.xaxis.label.set_color('#ffffff')
+                    ax.yaxis.label.set_color('#ffffff')
+                    ax.title.set_color('#ffffff')
+                self.histogram_widget.canvas.draw()
+        else:
+            # Light theme (default)
+            self.setStyleSheet("")
+            
+            # Apply light theme to histogram widget
+            if hasattr(self, 'histogram_widget'):
+                self.histogram_widget.figure.patch.set_facecolor('white')
+                for ax in self.histogram_widget.figure.get_axes():
+                    ax.set_facecolor('white')
+                    ax.spines['bottom'].set_color('black')
+                    ax.spines['top'].set_color('black')
+                    ax.spines['left'].set_color('black')
+                    ax.spines['right'].set_color('black')
+                    ax.tick_params(colors='black')
+                    ax.xaxis.label.set_color('black')
+                    ax.yaxis.label.set_color('black')
+                    ax.title.set_color('black')
+                self.histogram_widget.canvas.draw()
+            
+    def toggle_theme(self):
+        """Toggle between dark and light themes"""
+        self.dark_theme = not self.dark_theme
+        self.apply_theme()
+        
+    def toggle_fullscreen(self):
+        """Toggle fullscreen mode"""
+        if self.is_fullscreen:
+            self.showNormal()
+            self.is_fullscreen = False
+        else:
+            self.showFullScreen()
+            self.is_fullscreen = True
+            
+    def open_image(self):
+        """Open a single image file"""
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Open Image",
+            "",
+            "Image Files (*.jpg *.jpeg *.png *.bmp *.gif *.tiff *.tif *.webp *.ico *.svg);;All Files (*)"
+        )
+        
+        if file_path:
+            self.load_image(file_path)
+            
+            # Load directory for navigation
+            directory = os.path.dirname(file_path)
+            self.thumbnail_widget.load_directory(directory)
+            
+            # Find current image in list
+            filename = os.path.basename(file_path)
+            for i, path in enumerate(self.thumbnail_widget.image_paths):
+                if os.path.basename(path) == filename:
+                    self.current_index = i
+                    self.thumbnail_widget.setCurrentRow(i)
+                    break
+                    
+    def open_folder(self):
+        """Open a folder and load all images"""
+        folder_path = QFileDialog.getExistingDirectory(self, "Open Folder")
+          if folder_path:
+            self.thumbnail_widget.load_directory(folder_path)
+            if self.thumbnail_widget.image_paths:
+                self.current_index = 0
+                self.thumbnail_widget.setCurrentRow(0)
+                self.load_image(self.thumbnail_widget.image_paths[0])
+                
+    def load_image(self, image_path: str):
+        """Load and display an image with optimized lazy loading"""
+        try:
+            # Fast image loading - load pixmap first
+            pixmap = QPixmap(image_path)
+            if pixmap.isNull():
+                self.status_bar.showMessage(f"❌ Failed to load image: {image_path}")
+                return
+                
+            # Immediately display the image for fast response
+            self.image_label.set_image(pixmap)
+            self.current_image_path = image_path
+            
+            # Set default view to fit
+            self.image_label.zoom_fit()
+            
+            # Update status bar immediately
+            filename = os.path.basename(image_path)
+            self.status_bar.showMessage(f"📁 {filename} - {pixmap.width()}×{pixmap.height()}")
+            
+            # Update window title
+            self.setWindowTitle(f"ImageViewer Pro v2.0 - {filename}")
+            
+            # Load metadata and histogram asynchronously using timer
+            # This prevents blocking the UI during navigation
+            QTimer.singleShot(100, lambda: self.load_metadata_async(image_path))
+            QTimer.singleShot(200, lambda: self.load_histogram_async(image_path))
+            
+        except Exception as e:
+            self.status_bar.showMessage(f"❌ Error loading image: {str(e)}")
+            QMessageBox.critical(self, "Error", f"Failed to load image:\n{str(e)}")
+            
+    def load_metadata_async(self, image_path: str):
+        """Load metadata asynchronously"""
+        try:
+            if self.current_image_path == image_path:  # Only if still current image
+                self.metadata_widget.display_metadata(image_path)
+        except Exception as e:
+            print(f"Error loading metadata: {e}")
+            
+    def load_histogram_async(self, image_path: str):
+        """Load histogram asynchronously"""
+        try:
+            if self.current_image_path == image_path:  # Only if still current image
+                self.histogram_widget.set_image(image_path)
+        except Exception as e:
+            print(f"Error loading histogram: {e}")
+
+    def on_thumbnail_clicked(self, item):
+        """Handle thumbnail click"""
+        row = self.thumbnail_widget.row(item)
+        if 0 <= row < len(self.thumbnail_widget.image_paths):
+            self.current_index = row
+            self.load_image(self.thumbnail_widget.image_paths[row])
+            
+    def previous_image(self):
+        """Navigate to previous image"""
+        if self.thumbnail_widget.image_paths and self.current_index > 0:
+            self.current_index -= 1
+            self.thumbnail_widget.setCurrentRow(self.current_index)
+            self.load_image(self.thumbnail_widget.image_paths[self.current_index])
+            
+    def next_image(self):
+        """Navigate to next image"""
+        if (self.thumbnail_widget.image_paths and 
+            self.current_index < len(self.thumbnail_widget.image_paths) - 1):
+            self.current_index += 1
+            self.thumbnail_widget.setCurrentRow(self.current_index)
+            self.load_image(self.thumbnail_widget.image_paths[self.current_index])
+            
+    def keyPressEvent(self, event):
+        """Handle key press events"""
+        if event.key() == Qt.Key_Escape and self.is_fullscreen:
+            self.toggle_fullscreen()
+        elif event.key() == Qt.Key_Left:
+            self.previous_image()
+        elif event.key() == Qt.Key_Right:
+            self.next_image()
+        elif event.key() == Qt.Key_Space:
+            self.next_image()
+        else:
+            super().keyPressEvent(event)
+            
+    def show_about(self):
+        """Show about dialog"""
+        about_text = """
+        <h2>🖼️ ImageViewer Pro v2.0</h2>
+        <p><b>Professional Image Viewer Application</b></p>
+        
+        <p><b>👨‍💻 Author:</b> Phan Nhật Huy</p>
+        <p><b>📧 Email:</b> nhathuy7080zz@gmail.com</p>
+        <p><b>📍 Location:</b> Ho Chi Minh, Vietnam</p>
+        
+        <h3>✨ Features:</h3>
+        <ul>
+            <li>🔍 Advanced zoom and pan controls</li>
+            <li>📁 Thumbnail browser with directory navigation</li>
+            <li>📊 Real-time color histogram analysis</li>
+            <li>📋 Comprehensive EXIF metadata display</li>
+            <li>🔄 Image rotation (90° increments)</li>
+            <li>🌙 Dark/Light theme switching</li>
+            <li>🖥️ Fullscreen viewing mode</li>
+            <li>⌨️ Extensive keyboard shortcuts</li>
+            <li>🎨 Support for multiple image formats</li>
+        </ul>
+        
+        <h3>🎯 Supported Formats:</h3>
+        <p>JPG, PNG, BMP, GIF, TIFF, WebP, ICO, SVG</p>
+        
+        <h3>⌨️ Keyboard Shortcuts:</h3>
+        <ul>
+            <li><b>Ctrl+O:</b> Open Image</li>
+            <li><b>Ctrl+Shift+O:</b> Open Folder</li>
+            <li><b>F11:</b> Toggle Fullscreen</li>
+            <li><b>Ctrl+T:</b> Toggle Theme</li>
+            <li><b>Left/Right:</b> Navigate Images</li>
+            <li><b>Ctrl++/-:</b> Zoom In/Out</li>
+            <li><b>Ctrl+0:</b> Actual Size</li>
+            <li><b>Ctrl+9:</b> Fit to Window</li>
+            <li><b>Ctrl+L/R:</b> Rotate Left/Right</li>
+        </ul>
+        
+        <p><small>Built with PyQt5, Pillow, and Matplotlib</small></p>
+        """
+        
+        QMessageBox.about(self, "About ImageViewer Pro", about_text)
+
+
+def main():
+    """Main application entry point"""
+    app = QApplication(sys.argv)
+    app.setApplicationName("ImageViewer Pro")
+    app.setApplicationVersion("2.0")
+    app.setOrganizationName("Phan Nhật Huy")
+    
+    # Set application icon (if available)
+    try:
+        app.setWindowIcon(QIcon("icon.png"))
+    except:
+        pass
+    
+    # Create and show main window
+    viewer = ImageViewer()
+    viewer.show()
+    
+    # Auto-open image if provided as command line argument
+    if len(sys.argv) > 1:
+        image_path = sys.argv[1]
+        if os.path.isfile(image_path):
+            viewer.load_image(image_path)
+        elif os.path.isdir(image_path):
+            viewer.thumbnail_widget.load_directory(image_path)
+            if viewer.thumbnail_widget.image_paths:
+                viewer.load_image(viewer.thumbnail_widget.image_paths[0])
+    
+    return app.exec_()
+
+
+if __name__ == "__main__":
+    sys.exit(main())
