@@ -923,10 +923,10 @@ class ImageViewer(QMainWindow):
                 font-size: 11px;
             }
         """)
-        self.status_bar.showMessage("🚀 ImageViewer Pro v2.0 Ready - Open an image or folder to start")
+        self.status_bar.showMessage("🚀 ImageViewer Pro v2.1 Ready - Open an image or folder to start")
         
         # Window settings
-        self.setWindowTitle("🖼️ ImageViewer Pro v2.0 - High Performance Edition")
+        self.setWindowTitle("🖼️ ImageViewer Pro v2.1 - High Performance Edition")
         self.setMinimumSize(1200, 700)
         self.resize(1600, 900)
         
@@ -1140,7 +1140,7 @@ class ImageViewer(QMainWindow):
             self.status_bar.showMessage(
                 f"🖼️ {filename} • 📏 {pixmap.width()}×{pixmap.height()} • 🔍 {int(self.image_label.scale_factor*100)}%"
             )
-            self.setWindowTitle(f"🖼️ ImageViewer Pro v2.0 - {filename}")
+            self.setWindowTitle(f"🖼️ ImageViewer Pro v2.1 - {filename}")
             
             # Async metadata and histogram loading for performance
             QTimer.singleShot(50, lambda: self.load_metadata_async(image_path))
@@ -1192,7 +1192,7 @@ def main():
     """Main application function with error handling"""
     app = QApplication(sys.argv)
     app.setApplicationName("ImageViewer Pro")
-    app.setApplicationVersion("2.0")
+    app.setApplicationVersion("2.1")
     app.setOrganizationName("Phan Nhật Huy")
     
     try:

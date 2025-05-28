@@ -144,3 +144,5 @@ NOTES.md
 # Build artifacts
 *.spec
 build_*.py
+build/
+dist/

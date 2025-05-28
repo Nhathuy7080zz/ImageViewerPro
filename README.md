@@ -1,15 +1,22 @@
-# ImageViewer Pro v2.0
+# 🖼️ ImageViewer Pro v2.1
 
-# 🖼️ ImageViewerPro - Professional Image Viewer
+**Professional Image Viewer with RAW Camera Support**
 
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Python](https://img.shields.io/badge/python-3.8+-green.svg)
 ![PyQt5](https://img.shields.io/badge/PyQt5-5.15+-orange.svg)
-![Status](https://img.shields.io/badge/status-Fully%20Functional-brightgreen.svg)
+![Status](https://img.shields.io/badge/status-Production%20Ready-brightgreen.svg)
+![RAW Support](https://img.shields.io/badge/RAW%20Support-11%20Formats-red.svg)
 
-**🎯 A modern, feature-rich image viewer built with PyQt5, offering professional-grade capabilities for image viewing, analysis, and management.**
+**🎯 A modern, feature-rich image viewer built with PyQt5, offering professional-grade capabilities for image viewing, RAW camera file support, and advanced image analysis.**
 
-## ✨ Recent Updates (Latest Release v2.0) - BEAUTIFUL OPTIMIZED EDITION
+## ✨ Latest Release v2.1 - RAW CAMERA SUPPORT EDITION
+
+### 🎯 What's New in v2.1
+- **📷 Comprehensive RAW Camera Support**: Added support for 11 major RAW formats (ARW, CR2, CR3, NEF, DNG, RAW, ORF, PEF, RW2, SRW, X3F)
+- **⌨️ Enhanced Navigation**: Up/Down arrow keys for intuitive image browsing
+- **🎨 Optimized Layout**: Reorganized right panel for maximum metadata display space
+- **📂 Categorized File Filters**: Organized file dialog with Standard/RAW/All options
 
 🎨 **BEAUTIFUL UI REDESIGN** - Complete visual overhaul with professional styling  
 ⚡ **100x FASTER STARTUP** - Reduced from ~2-3s to 0.02s startup time  
